@@ -1,141 +1,149 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>智慧交通輔助系統</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
-        <style>
-            h1 {
-                font-size: 50px;
-                font-family: DFKai-sb;
-                color: rgb(0, 0, 0);
-            }
-            video {
-                width: 100%;
-                max-width: 640px;
-                border: 2px solid black;
-            }
-            button {
-                font-size: 20px;
-                padding: 10px;
-                margin: 10px;
-                cursor: pointer;
-            }
-            #status {
-                text-align: center;
-                margin-top: 20px;
-                font-size: 18px;
-                color: red;
-            }
-        </style>
-    </head>
-    <body>
-        <center>
-            <h1>智慧交通輔助系統</h1>
-            <marquee width="100%" direction="left" scrollamount="5">
-                <font size="5" style="-webkit-text-stroke: 0.2px rgb(255, 255, 255);color:rgb(19, 55, 102);">
-                    歡迎使用~&nbsp;&emsp;歡迎使用~
-                </font>
-            </marquee>
-            
-            <video id="video" autoplay playsinline></video>
-            <canvas id="canvas" style="display: none;"></canvas>
-            <br>
-            <button id="startButton">開始攝影機</button>
-            <button id="stopButton" disabled>停止攝影機</button>
-            <br><br>
-            <img id="processedFrame" alt="處理後的影像">
-            <p id="detections"></p>
-            <p id="status">等待開始攝影機...</p>
-        </center>
-        <script>
-            const video = document.getElementById("video");
-            const canvas = document.getElementById("canvas");
-            const ctx = canvas.getContext("2d");
-            const processedFrame = document.getElementById("processedFrame");
-            const detectionsText = document.getElementById("detections");
-            const statusText = document.getElementById("status");
-    
-            const startButton = document.getElementById("startButton");
-            const stopButton = document.getElementById("stopButton");
-    
-            const socket = io("http://localhost:5000", { transports: ["websocket"] });
-            socket.on("response_frame", function (data) {
-                console.log("📸 收到後端回傳的影像", data);
-                
-                if (data.image) {
-                    processedFrame.src = "data:image/jpeg;base64," + data.image;
-                    detectionsText.innerText = "偵測結果：" + JSON.stringify(data.detections, null, 2);
-                } else {
-                    console.error("❌ 沒有收到影像數據");
-                }
-            });
-            let stream = null;
-            let captureInterval = null;
-    
-            // 啟動攝影機
-            async function startCamera() {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                    video.srcObject = stream;
-                    statusText.innerText = "🎥 攝影機已啟動";
-                    startButton.disabled = true;
-                    stopButton.disabled = false;
-    
-                    socket.on("response_frame", function (data) {
-                        console.log("📸 收到後端回傳的影像");
-                        
-                        if (data.image) {
-                            processedFrame.src = "data:image/jpeg;base64," + data.image;
-                            detectionsText.innerText = "偵測結果：" + JSON.stringify(data.detections);
-                        } else {
-                            console.error("❌ 沒有收到影像數據");
-                        }
-                    });
-    
-                    // 每 400ms 傳送影像
-                    captureInterval = setInterval(() => {
-                        captureAndSendFrame();
-                    }, 400);
-                } catch (err) {
-                    console.error("❌ 無法開啟攝影機", err);
-                    statusText.innerText = "🚨 開啟攝影機失敗，請檢查權限";
-                }
-            }
-    
-            // 停止攝影機
-            function stopCamera() {
-                if (stream) {
-                    stream.getTracks().forEach(track => track.stop());
-                    video.srcObject = null;
-                    clearInterval(captureInterval);
-                    statusText.innerText = "📴 攝影機已關閉";
-                    startButton.disabled = false;
-                    stopButton.disabled = true;
-                }
-            }
-    
-            // 擷取畫面並發送至伺服器
-            function captureAndSendFrame() {
-                if (!video.videoWidth || !video.videoHeight) return;
-    
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-                const imageData = canvas.toDataURL("image/jpeg").split(",")[1];
-    
-                console.log("📤 發送影像到伺服器...");
-                socket.emit("stream_frame", { image: imageData });
-    
-                console.log("✅ 影像已送出");
-            }
-    
-            startButton.addEventListener("click", startCamera);
-            stopButton.addEventListener("click", stopCamera);
-        </script>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>智慧交通輔助系統</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <style>
+      body {
+        font-family: DFKai-sb, sans-serif;
+        text-align: center;
+        background-color: #f4f4f4;
+      }
+      h1 {
+        font-size: 50px;
+        margin-top: 20px;
+      }
+      video, img {
+        width: 90%;
+        max-width: 640px;
+        border: 2px solid #444;
+        border-radius: 8px;
+        margin-top: 10px;
+      }
+      button {
+        font-size: 18px;
+        padding: 10px;
+        margin: 5px;
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 16px;
+        color: red;
+      }
+      #detectionsList {
+        max-width: 640px;
+        margin: 20px auto;
+        text-align: left;
+        background-color: white;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>智慧交通輔助系統</h1>
+    <marquee width="100%" direction="left" scrollamount="5">
+      <font size="5" style="-webkit-text-stroke: 0.2px rgb(255, 255, 255);color:rgb(19, 55, 102);">
+        歡迎使用~&nbsp;&emsp;歡迎使用~
+      </font>
+    </marquee>
 
-    </body>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <br />
+    <button id="startButton">開始攝影機</button>
+    <button id="stopButton" disabled>停止攝影機</button>
+
+    <img id="processedFrame" alt="處理後的影像">
+
+    <div id="detectionsList">
+      <h3>辨識結果</h3>
+      <ul id="detectionItems">
+        <li>尚未開始辨識</li>
+      </ul>
+      <p id="status">等待開始攝影機...</p>
+    </div>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const processedFrame = document.getElementById("processedFrame");
+        const detectionItems = document.getElementById("detectionItems");
+        const statusText = document.getElementById("status");
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+      
+        const socket = io();
+      
+        let stream = null;
+        let captureInterval = null;
+      
+        socket.on("response_frame", (data) => {
+          console.log("📥 收到來自後端的資料：", data); // ✅ 加這一行看資料格式
+      
+          if (data.image) {
+            processedFrame.src = "data:image/jpeg;base64," + data.image;
+          } else {
+            console.warn("⚠️ 沒有影像資料被回傳");
+          }
+      
+          detectionItems.innerHTML = "";
+          if (data.detections && data.detections.length > 0) {
+            data.detections.forEach(d => {
+              const li = document.createElement("li");
+              li.textContent = d;
+              detectionItems.appendChild(li);
+            });
+          } else {
+            const li = document.createElement("li");
+            li.textContent = "無偵測結果";
+            detectionItems.appendChild(li);
+          }
+        });
+      
+        async function startCamera() {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            video.srcObject = stream;
+            statusText.textContent = "🎥 攝影機已啟動";
+            startButton.disabled = true;
+            stopButton.disabled = false;
+      
+            captureInterval = setInterval(() => {
+              if (!video.videoWidth || !video.videoHeight) return;
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              ctx.drawImage(video, 0, 0);
+              const imageData = canvas.toDataURL("image/jpeg").split(",")[1];
+      
+              // ✅ debug log
+              console.log("📤 傳送影像給後端");
+              socket.emit("stream_frame", { image: imageData });
+            }, 500);
+          } catch (err) {
+            console.error("❌ 無法開啟攝影機", err);
+            statusText.textContent = "🚨 開啟攝影機失敗，請檢查權限";
+          }
+        }
+      
+        function stopCamera() {
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            clearInterval(captureInterval);
+            statusText.textContent = "📴 攝影機已關閉";
+            startButton.disabled = false;
+            stopButton.disabled = true;
+          }
+        }
+      
+        startButton.addEventListener("click", startCamera);
+        stopButton.addEventListener("click", stopCamera);
+      </script>      
+  </body>
 </html>
 
