@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>智慧交通輔助系統</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+        <style>
+            h1 {
+                font-size: 50px;
+                font-family: DFKai-sb;
+                color: rgb(0, 0, 0);
+            }
+            video {
+                width: 100%;
+                max-width: 640px;
+                border: 2px solid black;
+            }
+            button {
+                font-size: 20px;
+                padding: 10px;
+                margin: 10px;
+                cursor: pointer;
+            }
+            #status {
+                text-align: center;
+                margin-top: 20px;
+                font-size: 18px;
+                color: red;
+            }
+        </style>
+    </head>
+    <body>
+        <center>
+            <h1>智慧交通輔助系統</h1>
+            <marquee width="100%" direction="left" scrollamount="5">
+                <font size="5" style="-webkit-text-stroke: 0.2px rgb(255, 255, 255);color:rgb(19, 55, 102);">
+                    歡迎使用~&nbsp;&emsp;歡迎使用~
+                </font>
+            </marquee>
+            
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <br>
+            <button id="startButton">開始攝影機</button>
+            <button id="stopButton" disabled>停止攝影機</button>
+            <br><br>
+            <img id="processedFrame" alt="處理後的影像">
+            <p id="detections"></p>
+            <p id="status">等待開始攝影機...</p>
+        </center>
+        <script>
+            const video = document.getElementById("video");
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+            const processedFrame = document.getElementById("processedFrame");
+            const detectionsText = document.getElementById("detections");
+            const statusText = document.getElementById("status");
+    
+            const startButton = document.getElementById("startButton");
+            const stopButton = document.getElementById("stopButton");
+    
+            const socket = io("http://localhost:5000", { transports: ["websocket"] });
+            socket.on("response_frame", function (data) {
+                console.log("📸 收到後端回傳的影像", data);
+                
+                if (data.image) {
+                    processedFrame.src = "data:image/jpeg;base64," + data.image;
+                    detectionsText.innerText = "偵測結果：" + JSON.stringify(data.detections, null, 2);
+                } else {
+                    console.error("❌ 沒有收到影像數據");
+                }
+            });
+            let stream = null;
+            let captureInterval = null;
+    
+            // 啟動攝影機
+            async function startCamera() {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                    video.srcObject = stream;
+                    statusText.innerText = "🎥 攝影機已啟動";
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+    
+                    socket.on("response_frame", function (data) {
+                        console.log("📸 收到後端回傳的影像");
+                        
+                        if (data.image) {
+                            processedFrame.src = "data:image/jpeg;base64," + data.image;
+                            detectionsText.innerText = "偵測結果：" + JSON.stringify(data.detections);
+                        } else {
+                            console.error("❌ 沒有收到影像數據");
+                        }
+                    });
+    
+                    // 每 400ms 傳送影像
+                    captureInterval = setInterval(() => {
+                        captureAndSendFrame();
+                    }, 400);
+                } catch (err) {
+                    console.error("❌ 無法開啟攝影機", err);
+                    statusText.innerText = "🚨 開啟攝影機失敗，請檢查權限";
+                }
+            }
+    
+            // 停止攝影機
+            function stopCamera() {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    video.srcObject = null;
+                    clearInterval(captureInterval);
+                    statusText.innerText = "📴 攝影機已關閉";
+                    startButton.disabled = false;
+                    stopButton.disabled = true;
+                }
+            }
+    
+            // 擷取畫面並發送至伺服器
+            function captureAndSendFrame() {
+                if (!video.videoWidth || !video.videoHeight) return;
+    
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+                const imageData = canvas.toDataURL("image/jpeg").split(",")[1];
+    
+                console.log("📤 發送影像到伺服器...");
+                socket.emit("stream_frame", { image: imageData });
+    
+                console.log("✅ 影像已送出");
+            }
+    
+            startButton.addEventListener("click", startCamera);
+            stopButton.addEventListener("click", stopCamera);
+        </script>
+
+    </body>
+</html>
+
